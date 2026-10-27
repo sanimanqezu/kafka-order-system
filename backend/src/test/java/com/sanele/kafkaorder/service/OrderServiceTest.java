@@ -58,4 +58,21 @@ class OrderServiceTest {
         assertThat(published.amount()).isEqualByComparingTo("499.99");
         assertThat(published.placedAt()).isNotNull();
     }
+
+    @Test
+    void placeOrder_stillReturnsResponse_whenPublishFails() {
+        CompletableFuture<SendResult<String, Object>> failed = new CompletableFuture<>();
+        failed.completeExceptionally(new RuntimeException("broker unavailable"));
+        when(kafkaTemplate.send(eq(Topics.ORDERS), any(), any())).thenReturn(failed);
+
+        PlaceOrderRequest request =
+                new PlaceOrderRequest("Sanele", "Mechanical Keyboard", 1, new BigDecimal("499.99"));
+
+        // Publishing is fire-and-forget today: the caller is acknowledged even if the
+        // send later fails. This is the gap the DLT / delivery-guarantee phase will close.
+        OrderResponse response = orderService.placeOrder(request);
+
+        assertThat(response.orderId()).isNotBlank();
+        assertThat(response.status()).isEqualTo("PLACED");
+    }
 }
